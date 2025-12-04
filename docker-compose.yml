@@ -2,32 +2,25 @@ version: "3.9"
 
 services:
   openmrs:
-    # Using a Maven+JDK base image to build and run the app via mvn inside the container
     image: openmrs-core-dev:latest
     build:
       context: .
       dockerfile: Dockerfile
       args:
-        # Allow overriding mvn args at build time, will be overridden by CI for faster builds
         MVN_ARGS: "install -DskipTests"
     container_name: openmrs-core
     ports:
-      # Map to port 3001 on the host, internal tomcat/jetty will still bind to 8080 by default
       - "${OPENMRS_HOST_PORT:-3001}:8080"
     environment:
-      # If the webapp binds to a configurable port, pass it via env; default remains 8080
       - SERVER_PORT=8080
-      # Standard JVM opts can be overriden via env if necessary
       - JAVA_OPTS=-Xms512m -Xmx1024m
     volumes:
-      # Mount local m2 cache for faster iterative builds; comment out if CI disallows it
       - ~/.m2:/root/.m2
-      # Mount workspace to allow hot-reload rebuilds without rebuilding the image layer
       - ./:/workspace
     working_dir: /workspace
+    # Use the same preview script to start from repo root; executed inside container context
     command: >
-      bash -lc "mvn -q -DskipTests tomcat7:run -Dmaven.test.skip=true -Dorg.slf4j.simpleLogger.log.org.apache.maven.cli.transfer.Slf4jMavenTransferListener=warn"
-    # Healthcheck to ensure app is up
+      bash -lc "chmod +x ./run-preview.sh && ./run-preview.sh"
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O - http://localhost:8080 || exit 1"]
       interval: 15s

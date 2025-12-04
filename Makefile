@@ -9,6 +9,10 @@ run:
 	@OPENMRS_HOST_PORT=$${OPENMRS_HOST_PORT:-3001} docker compose up
 
 # PUBLIC_INTERFACE
+preview:
+	@OPENMRS_HOST_PORT=$${OPENMRS_HOST_PORT:-3001} bash ./run-preview.sh
+
+# PUBLIC_INTERFACE
 run-detached:
 	@OPENMRS_HOST_PORT=$${OPENMRS_HOST_PORT:-3001} docker compose up -d
 
