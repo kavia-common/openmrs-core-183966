@@ -113,9 +113,13 @@ If all goes well (check the console output) you can access the OpenMRS applicati
 Refer to [Getting Started as a Developer - Maven](https://wiki.openmrs.org/display/docs/Maven) for some more information
 on useful Maven commands and build options.
 
-## Docker build
+## Docker build (recommended for preview in this environment)
 
-Docker builds are still work in progress. We appreciate any feedback and improvements to the process.
+For running in this environment without requiring host Maven, use Docker:
+- Build: `docker compose build --build-arg MVN_ARGS='install -DskipTests'`
+- Preview (port 3001 -> container 8080): `./run-preview.sh` or `docker compose up`
+
+The commands above ensure Maven runs inside the container, not on the host.
 
 The only prerequisite needed is Docker. 
 

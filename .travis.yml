@@ -9,7 +9,7 @@ jdk:
  - openjdk13
  - openjdk14
  - openjdk15
-script: mvn clean install --batch-mode && mvn test -Pskip-default-test -Pintegration-test
+script: docker compose build --build-arg MVN_ARGS='clean install -DskipTests' && docker compose run --rm openmrs bash -lc "mvn -q test -Pskip-default-test -Pintegration-test"
 matrix:
     - jdk: openjdk8
 branches:
