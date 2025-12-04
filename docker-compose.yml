@@ -1,29 +1,12 @@
-version: "3.9"
-
+version: "3.8"
 services:
-  openmrs:
-    image: openmrs-core-dev:latest
+  app:
     build:
       context: .
-      dockerfile: Dockerfile
-      args:
-        MVN_ARGS: "install -DskipTests"
-    container_name: openmrs-core
+      dockerfile: Dockerfile.preview
+    container_name: openmrs-core-preview
     ports:
-      - "${OPENMRS_HOST_PORT:-3001}:8080"
+      - "3001:8080"
     environment:
-      - SERVER_PORT=8080
-      - JAVA_OPTS=-Xms512m -Xmx1024m
-      - DOCKERIZED=true
-    volumes:
-      - ~/.m2:/root/.m2
-      - ./:/workspace
-    working_dir: /workspace
-    # Use the same preview script to start from repo root; executed inside container context
-    command: >
-      bash -lc "chmod +x ./run-preview.sh && ./run-preview.sh"
-    healthcheck:
-      test: ["CMD-SHELL", "wget -q -O - http://localhost:8080 || exit 1"]
-      interval: 15s
-      timeout: 5s
-      retries: 20
+      - JAVA_OPTS=-Xms256m -Xmx1024m
+    restart: unless-stopped

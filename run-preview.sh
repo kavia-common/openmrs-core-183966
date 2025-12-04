@@ -1,41 +1,73 @@
 #!/usr/bin/env bash
+# Run OpenMRS Core using Docker Compose for preview, without relying on host Maven.
+# Maps container HTTP port to 0.0.0.0:3001 on the host.
+# This script builds (if necessary) and starts the app service defined in docker-compose.yml.
+
 set -euo pipefail
 
-# PUBLIC_INTERFACE
-# This script starts OpenMRS for preview:
-# - When run on the host, it starts docker compose (maven runs inside container).
-# - When executed inside the container (compose command), it runs mvn to start Tomcat.
-# It maps to host port 3001 by default (OPENMRS_HOST_PORT), binding to 0.0.0.0.
-# Usage: ./run-preview.sh
-
-export OPENMRS_HOST_PORT="${OPENMRS_HOST_PORT:-3001}"
-
-# Ensure script is executable when invoked via bash path resolution quirks
-chmod +x "${BASH_SOURCE[0]}" 2>/dev/null || true
-
-# Detect container via DOCKERIZED flag set in compose or presence of /.dockerenv
-if [[ "${DOCKERIZED:-}" == "true" || -f "/.dockerenv" ]]; then
-  echo "Detected container environment, starting OpenMRS via Maven inside container on 0.0.0.0:8080 (host ${OPENMRS_HOST_PORT})..."
-  # Bind Tomcat to 0.0.0.0 and port 8080; host maps 3001->8080 via docker-compose
-  exec mvn -q -DskipTests tomcat7:run \
-    -Dmaven.test.skip=true \
-    -Dmaven.tomcat.port=8080 \
-    -Dmaven.tomcat.host=0.0.0.0 \
-    -Dorg.slf4j.simpleLogger.log.org.apache.maven.cli.transfer.Slf4jMavenTransferListener=warn
-else
-  echo "Starting OpenMRS via docker compose on host port ${OPENMRS_HOST_PORT} ..."
-  # Ensure we never call host mvn; docker compose will build and run the containerized Maven
-  if [[ "${DRY_RUN:-}" == "1" || "${DRY_RUN:-}" == "true" ]]; then
-    echo "[DRY RUN] docker compose up"
-    exit 0
-  fi
-  # Prefer docker compose, fall back to docker-compose for older environments
-  if command -v docker &>/dev/null && docker compose version &>/dev/null; then
-    exec docker compose up
-  elif command -v docker-compose &>/dev/null; then
-    exec docker-compose up
-  else
-    echo "Error: docker compose is required but not found." >&2
-    exit 127
-  fi
+# Ensure docker and docker compose are available
+if ! command -v docker >/dev/null 2>&1; then
+  echo "Error: docker is required but not installed or not in PATH." >&2
+  exit 1
 fi
+
+# Prefer docker compose (v2), fallback to docker-compose (v1)
+if docker compose version >/dev/null 2>&1; then
+  DOCKER_COMPOSE_CMD="docker compose"
+elif command -v docker-compose >/dev/null 2>&1; then
+  DOCKER_COMPOSE_CMD="docker-compose"
+else
+  echo "Error: docker compose (v2) or docker-compose (v1) is required but not found." >&2
+  exit 1
+fi
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
+
+# Generate a default docker-compose.yml if it does not exist
+if [ ! -f docker-compose.yml ]; then
+  cat > docker-compose.yml <<'YAML'
+version: "3.8"
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.preview
+    container_name: openmrs-core-preview
+    ports:
+      - "3001:8080"
+    environment:
+      - JAVA_OPTS=-Xms256m -Xmx1024m
+    # Allow the app to bind to 0.0.0.0 inside container (default for most web servers)
+    restart: unless-stopped
+YAML
+fi
+
+# Generate a lightweight Dockerfile for preview if not present
+if [ ! -f Dockerfile.preview ]; then
+  cat > Dockerfile.preview <<'DOCKER'
+# Multi-stage: Build the OpenMRS WAR using Maven inside container, then run on Tomcat
+FROM maven:3.9-eclipse-temurin-17 AS build
+WORKDIR /workspace
+# Copy the entire project to build context
+COPY . /workspace
+# Build the webapp (skip tests to speed up preview)
+RUN mvn -q -DskipTests clean package
+
+# Runtime image with Tomcat
+FROM tomcat:9.0-jdk17-temurin
+# Remove default ROOT and deploy our WAR
+RUN rm -rf /usr/local/tomcat/webapps/ROOT
+# Try to find the built WAR; fall back to webapp/target if standard
+# The project is multi-module; webapp module typically produces openmrs.war
+COPY --chown=tomcat:tomcat webapp/target/*.war /usr/local/tomcat/webapps/ROOT.war
+# Expose 8080 inside the container; docker-compose maps this to 3001
+EXPOSE 8080
+ENV CATALINA_OPTS="-Djava.security.egd=file:/dev/./urandom ${JAVA_OPTS}"
+CMD ["catalina.sh", "run"]
+DOCKER
+fi
+
+# Build and start the app
+$DOCKER_COMPOSE_CMD build app
+$DOCKER_COMPOSE_CMD up app
