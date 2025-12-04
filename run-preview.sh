@@ -10,6 +10,9 @@ set -euo pipefail
 
 export OPENMRS_HOST_PORT="${OPENMRS_HOST_PORT:-3001}"
 
+# Ensure script is executable when invoked via bash path resolution quirks
+chmod +x "${BASH_SOURCE[0]}" 2>/dev/null || true
+
 # Detect container via DOCKERIZED flag set in compose or presence of /.dockerenv
 if [[ "${DOCKERIZED:-}" == "true" || -f "/.dockerenv" ]]; then
   echo "Detected container environment, starting OpenMRS via Maven inside container on 0.0.0.0:8080 (host ${OPENMRS_HOST_PORT})..."
@@ -26,5 +29,13 @@ else
     echo "[DRY RUN] docker compose up"
     exit 0
   fi
-  exec docker compose up
+  # Prefer docker compose, fall back to docker-compose for older environments
+  if command -v docker &>/dev/null && docker compose version &>/dev/null; then
+    exec docker compose up
+  elif command -v docker-compose &>/dev/null; then
+    exec docker-compose up
+  else
+    echo "Error: docker compose is required but not found." >&2
+    exit 127
+  fi
 fi
